@@ -9,6 +9,36 @@ import fileutils
 DATETIME_FORMAT = "%Y:%m:%d %H:%M:%S"
 OUTPUT_DATETIME_FORMAT = "%Y-%b-%d"
 
+
+def convert_datetime(string: str):
+    return datetime.datetime.strptime(string, DATETIME_FORMAT).strftime(OUTPUT_DATETIME_FORMAT)
+
+
+def process_file(file: fileutils.File, display_all=False):
+    # Check they are image files (have exif data)
+    with open(file.full_filename(), 'rb') as image_file:
+        image = exifread.process_file(image_file)
+
+    if not image.keys():
+        if display_all:
+            print(f"{file.name} is not a photo (no exif data found)")
+
+        return
+
+    # If they are, extract the tag from the exif data
+    tag_value = image["EXIF DateTimeOriginal"]
+
+    # and create a dir with the VALUE of the tag
+    output_path = Path(file.path, convert_datetime(tag_value.printable))
+    output_path.mkdir(exist_ok=True)
+
+    new_location = Path(output_path, file.name)
+
+    # Move file to that dir
+    print(f"Moving {file.name} to {output_path}")
+    Path(file.full_filename()).rename(new_location)
+
+
 parser = argparse.ArgumentParser(description='Organise photos into directories based on their exif data')
 parser.add_argument('directories', metavar='directories', type=str, nargs='+',
                     help='Directories to organise')
@@ -23,37 +53,20 @@ parser.add_argument('--displayAll', '-a', dest="displayAll", action="store_true"
 #                          "Formatting can also be applied for certain tags, datetime for example allows formatting:"
 #                          "<datetime#yyyy-MM-dd> will be parsed to the given format")
 
-# Parse arguments
-args = parser.parse_args()
 
-# For each directory
-for dir in args.directories:
-    print(f"Processing {dir}")
-    # For each file
-    files = fileutils.get_files(dir)
+def main():
+    # Parse arguments
+    args = parser.parse_args()
 
-    for file in files:
-        # Check they are image files (have exif data)
-        with open(file.full_filename(), 'rb') as image_file:
-            image = exifread.process_file(image_file)
+    # For each directory
+    for directory in args.directories:
+        print(f"Processing {directory}")
+        # For each file
+        files = fileutils.get_files(directory)
 
-        if image.keys():
-            # If they are, extract the tag from the exif data
-            tag_value = image["EXIF DateTimeOriginal"]
+        for file in files:
+            process_file(file)
 
-            # and create a dir with the VALUE of the tag
-            output = datetime.datetime.strptime(tag_value.printable, DATETIME_FORMAT).strftime(OUTPUT_DATETIME_FORMAT)
 
-            output_path = Path(dir, output)
-
-            print(f"{file.name} has date time value of {tag_value}, and output dir of {output_path}")
-
-            output_path.mkdir(exist_ok=True)
-
-            new_location = Path(output_path, file.name)
-
-            # Move file to that dir
-            Path(file.full_filename()).rename(new_location)
-        else:
-            if args.displayAll:
-                print(f"{file.name} is not a photo (no exif data found)")
+if __name__ == '__main__':
+    main()
